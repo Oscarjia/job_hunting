@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>新闻摘要</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="keywords" content="Agendo Responsive web template, Bootstrap Web Templates, Flat Web Templates, Andriod Compatible web template, 
+Smartphone Compatible web template, free webdesigns for Nokia, Samsung, LG, SonyErricsson, Motorola web design" />
+<script type="application/x-javascript"> addEventListener("load", function() { setTimeout(hideURLbar, 0); }, false); function hideURLbar(){ window.scrollTo(0,1); } </script>
+<link href="{{url_for('static', filename='css/bootstrap.css')}}" rel="stylesheet" type="text/css" media="all"/>
+<!--theme-style-->
+<link href="{{url_for('static', filename='css/style.css')}}" rel="stylesheet" type="text/css" media="all" />	
+<!--//theme-style-->
+<!--fonts-->
+<link href='http://fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,400italic,500,500italic,700,700italic,900,900italic' rel='stylesheet' type='text/css'>
+<!--//fonts-->
+<script type="text/javascript" src="{{url_for('static', filename='js/jquery-1.11.0.min.js')}}"></script>
+<script type="text/javascript" src="{{url_for('static', filename='js/move-top.js')}}"></script>
+<script type="text/javascript" src="{{url_for('static', filename='js/easing.js')}}"></script>
+</head>
+<body>
+	<!--start-banner-->
+	<div class="banner banner1" id="home">
+		<div class="container">
+			<div class="banner-text bnr-text">
+				<h1>新闻摘要</h1>
+			</div>
+		</div>
+	</div>
+	<!--end-banner-->
+	<!--start-single-->
+	<div class="single">
+		<div class="container">
+			<div class="single-top">
+				<div class="col-md-8 single-left">
+					<div class="reply">
+						<h3>输入新闻</h3>
+						<form method="post">
+							<input type="text" value="{{ title }}" name="title" onfocus="this.value = {{ title }};" onblur="if (this.value == '') {this.value = '';}">
+							<textarea value="content" name="content" onfocus="this.value = {{ content }};" onblur="if (this.value == '') {this.value = 'content';}">{{ content }}</textarea>
+							<input type="submit" value="提交" />
+						</form>
+					</div>
+				</div>
+			</div>
+			<div class="contact-top">
+				<div class="col-md-6 contact-left">
+					<h3>摘要</h3>
+					<p>{{ summary }}</p>
+				</div>
+			</div>
+				<div class="clearfix"></div>
+		</div>
+	</div>
+	<!--end-single-->
+	<!--start-footer-->
+	<div class="footer">
+		<div class="container">
+			<div class="footer-text">
+				<p>Copyright &copy; 2019.蒋晓天.<a target="_blank"></a></p>
+			</div>
+		</div>
+		<script type="text/javascript">
+									$(document).ready(function() {
+										/*
+										var defaults = {
+								  			containerID: 'toTop', // fading element id
+											containerHoverID: 'toTopHover', // fading element hover id
+											scrollSpeed: 1200,
+											easingType: 'linear' 
+								 		};
+										*/
+										
+										$().UItoTop({ easingType: 'easeOutQuart' });
+										
+									});
+								</script>
+		<a href="#home" id="toTop" class="scroll" style="display: block;"> <span id="toTopHover" style="opacity: 1;"> </span></a>
+	</div>
+	<!--end-footer-->
+</body>
+</html>

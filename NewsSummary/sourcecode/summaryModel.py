@@ -1,135 +1,86 @@
-from gensim.models import word2vec
-import numpy as np
-from sklearn.decomposition import PCA
-import re
-import jieba
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2019
+# ========================================
+
+from utils import SIF, cut_content, cut_sentence, cosine
 
 
-class SummaryModel:
-    def __init__(self):
-        # 读取训练完的模型
-        self.model = word2vec.Word2Vec.load('model_191115_1')  
-        # 计算模型一共有多少词，用于计算词频
-        self.total = 0
-        for k in self.model.wv.vocab.keys():
-            self.total += self.model.wv.vocab[k].count
+class ArticleSummary:
+    """新闻摘要模型，输入标题（非必须，但是可以提高精度）和正文内容，输出由正文若干关键句子组成的摘要"""
 
-    # 计算词频
-    def get_fre(self, w):
-        return self.model.wv.vocab[w].count / self.total
+    def __init__(self, model_path, model_size, a, stopwords_path, length_lmt,
+                 weight, times, rg, topn):
+        """初始化模型
+        Args:
+            model_path: word2vec模型路径
+            model_size: word2vec词向量size
+            a: SIF模型参数
+            stopwords_path: 停用词文件路径
+            length_lmt: 最短句子长度限制
+            weight: 计算相关性时正文和标题的权重
+            times: 平滑的重复次数
+            rg: 平滑窗口大小
+            topn: 摘要的句子数量
+        """
+        # 初始化SIF模型
+        self.sif = SIF(model_path, model_size, a)
+        # 读取停用词
+        with open(stopwords_path, 'r') as f:
+            self.stopwords = [word.strip() for word in f.readlines() if word.strip()]
 
-    # SIF模型第一步
-    def sif_s1(self, s: list, a) -> np.array:
-        v = np.zeros(self.model.wv['算法'].shape)
-        count = 0
-        for w in s:
-            if w not in self.model.wv: continue
-            we_w = a / (a + self.get_fre(w)) * self.model.wv[w]
-            v += we_w
-            count += 1
-        if count > 0:
-            return v / count
-        else:
-            return v
+        self.length_lmt = length_lmt
+        self.weight = weight
+        self.times = times
+        self.rg = rg
+        self.topn = topn
 
-    # SIF模型第二部
-    @staticmethod
-    def sif_s2(s: np.array) -> np.array:
-        pca = PCA(n_components=1)
-        pca.fit(s)
-        pc = pca.components_
-        return s - s.dot(pc.T) * pc
-
-    # 用余弦相似度计算句向量之间的关系
-    @staticmethod
-    def relative(sentences, title, article, weight):
-        def cosine_v(v1, v2):
-            num = np.dot(v1, v2.T)
-            demon = np.linalg.norm(v1) * np.linalg.norm(v2)
-            return num / demon
-
+    def relevance(self, title, content, sentences):
+        """计算各个句子和标题以及正文的相关性"""
         c = []
-        for i in range(sentences.shape[0]):
-            s = sentences[i, :]
-            c_i = weight * cosine_v(s, article.T) + (1 - weight) * cosine_v(s, title.T)
-            c.append(c_i)
+        for s in sentences:
+            c.append(self.weight * cosine(s, content) + (1 - self.weight) * cosine(s, title))
         return c
 
-    # 句子分割
-    @staticmethod
-    def cut_content(content, cut_point='。；！？', spliter='@%#'):
-        # 插入分割符
-        new_content = ''
-        i = 0
-        while i < len(content):
-            new_content += content[i]
-            if content[i] in cut_point:
-                if i < len(content) - 1 and content[i + 1] == '”':
-                    i += 1
-                    new_content += content[i]
-                new_content += spliter
-            i += 1
+    def smooth(self, lst):
+        """对相关性进行平滑处理"""
+        # 防止index error，对左边界进行限定
+        def left_border(i):
+            return i - self.rg if i >= self.rg else 0
 
-        # 分割
-        sentences = re.split('[{}]'.format(spliter), new_content)
+        for _ in range(self.times):
+            smooth_list = []
+            for i in range(len(lst)):
+                smooth_area = lst[left_border(i):i + self.rg + 1]
+                smooth_list.append(sum(smooth_area) / len(smooth_area))
+        return smooth_list
 
-        # 筛选长度大于5的句子。经过测试，新闻库里有很多图片的名字，并不是正文但是对模型结果有很大的影响，需要去除
-        new_sentences = []
-        for s in sentences:
-            s = re.sub('\\\\n|[\n\u3000\r]', '', s)
-            s = s.strip()
-            if len(s) > 5:
-                new_sentences.append(s)
+    def get_summary(self, title, content):
+        """接受输入，并输出摘要"""
 
-        return new_sentences
+        # 将新闻正文切分成一个个单独的句子，并筛选掉长度不高超过5的短句
+        sentences = [s for s in cut_content(content) if len(s) > self.length_lmt]
 
-    # 输入标题和内容，计算相似度后进行KNN平滑
-    def get_c(self, title, sentences, sif_a, weight=0.5):
-        punctuation = '！？｡。，＂＃＄％＆＇（）＊＋－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃《》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘\'‛“”„‟…‧﹏' + '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~·ʔ•'
-        article = []
+        # 将标题、正文和每个句子进行分词
+        cut_list = [cut_sentence(s, self.stopwords) for s in [title, ''.join(sentences)] + sentences]
 
-        def sentence_to_words(s):
-            s = re.sub('[{}]'.format(punctuation + '\n'), ' ', s)
-            words = jieba.cut(s)
-            return [w for w in words if w.strip()]
+        # 获得句向量
+        vectors = self.sif.embedding(cut_list)
 
-        title = sentence_to_words(title)
-        for i in range(len(sentences)):
-            words = sentence_to_words(sentences[i])
-            article += words
-            sentences[i] = [sentences[i], words]
-        title_v = self.sif_s1(title, sif_a)
-        article_v = self.sif_s1(article, sif_a)
-        sentences_v = np.zeros([len(sentences), 250])
-        for i in range(len(sentences)):
-            sentences_v[i, :] = self.sif_s1(sentences[i][1], sif_a)
-        sentences_v = self.sif_s2(sentences_v)
+        # 计算相似度
+        correlation = self.relevance(vectors[0], vectors[1], vectors[2:])
 
-        c = self.relative(sentences_v, title_v, article_v, weight)
-        # KNN平滑
-        knn_c = []
+        # 对相似度进行平滑处理，增加结果摘要的句子连贯性
+        new_cor = self.smooth(correlation)
 
-        def left_(i):
-            if i <= 2:
-                return 0
-            else:
-                return i - 2
+        # 加上序列标记，方便后续按原文顺序输出句子
+        new_cor = [(i, c) for i, c in enumerate(new_cor)]
 
-        for i in range(len(c)):
-            c_i = sum(c[left_(i): i + 3]) / len(c[left_(i): i + 3])
-            knn_c.append(c_i)
+        # 选出最相关的n个句子
+        topn_cor = sorted(new_cor, key=lambda x: x[1], reverse=True)[:self.topn]
 
-        for i in range(len(knn_c)):
-            sentences[i] = [sentences[i][0], knn_c[i], i]
+        # 按原文顺序组成摘要
+        summary = ''.join(sentences[i] for i, _ in sorted(topn_cor, key=lambda x: x[0]))
 
-        return sentences
-
-    # 输出摘要
-    def get_summary(self, title, content, n=5, sif_a=1e-5, weight=0.4):
-        # 切割句子
-        sentences = self.cut_content(content)
-        # 获得句子相关度
-        sentences_c = self.get_c(title, sentences, sif_a, weight)
-        # 输入最相关的5个句子，并按原文顺序排列
-        topn = [s[0] for s in sorted([s for s in sorted(sentences_c, key=lambda x: x[1], reverse=True)][:n], key=lambda x:x[2])]
-        return ''.join(topn)
+        return summary
