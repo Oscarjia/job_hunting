@@ -1,183 +1,142 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
+import os
 import argparse
-import json
-import time
-
-import random
-import numpy as np
+import logging
 import pandas as pd
-import tensorflow as tf
-
-from flask import Flask, request, redirect, url_for, render_template
-from dataset import DataSet
-from model import Model
-from utils import *
-from data_preprocess_web import process_data
-
+from predict import SentimentAnalysis
+from flask import Flask, request, render_template
 from pyecharts.charts import Radar
 from pyecharts import options as opts
 from pyecharts.render import make_snapshot
 from snapshot_selenium import snapshot
+import random
 
 from datetime import timedelta
 
 from selenium.webdriver.chrome.options import Options
 
+# GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-def add_arguments(parser):
-    """Build ArgumentParser."""
-    parser.register("type", "bool", lambda v: v.lower() == "true")
 
-    # mode
-    parser.add_argument("--mode", type=str, default='train', help="running mode: train | eval | inference")
+# 参数
+def initial_arguments():
+    parser = argparse.ArgumentParser()
 
     # data
-    parser.add_argument("--data_file", type=str, nargs='+', default=None, help="data file for train or inference")
-    parser.add_argument("--label_file", type=str, default=None, help="label file")
-    parser.add_argument("--vocab_file", type=str, default=None, help="vocab file")
-    parser.add_argument("--embed_file", type=str, default=None, help="embedding file to restore")
-    parser.add_argument("--out_file", type=str, default=None, help="output file for inference")
-    parser.add_argument("--test_sentence_file", type=str, default=None, help="file contains 10 test comments")
-    parser.add_argument("--split_word", type='bool', nargs="?", const=True, default=True,
-                        help="Whether to split word when oov")
-    parser.add_argument("--max_len", type=int, default=1200, help='max length for doc')
-    parser.add_argument("--batch_size", type=int, default=32, help="batch size")
-    parser.add_argument("--reverse", type='bool', nargs="?", const=True, default=False, help="Whether to reverse data")
-    parser.add_argument("--prob", type='bool', nargs="?", const=True, default=False, help="Whether to export prob")
+    parser.add_argument('--root_path', type=str, default='', help='the path of main.py')
+    parser.add_argument('--raw_data', type=str, default='data/train.csv', help='unprocessed data')
+    parser.add_argument('--processed_data', type=str, default='data/processed.csv',
+                        help='data after segment and tokenize')
+    parser.add_argument('--train_data', type=str, default='data/train_data.csv', help='path of training data file')
+    parser.add_argument('--num_train_sample', type=int, default=100000, help='num of train sample')
+    parser.add_argument('--valid_data', type=str, default='data/valid_data.csv', help='path of validating data file')
+    parser.add_argument('--num_valid_sample', type=int, default=5000, help='num of valid sample')
+    parser.add_argument('--label_file', type=str, default='data/label_names.txt', help='path of label name')
+    parser.add_argument('--stopwords_file', type=str, default='data/stopwords.txt', help='path of stopwords file')
+    parser.add_argument('--vocab_file', type=str, default='data/vocab.txt', help='path of vocabulary file')
+    parser.add_argument('--test_comment_file', type=str, default='data/test_comments.csv', help='comments used for testing')
 
-    # model
-    parser.add_argument("--num_layers", type=int, default=2, help="number of layers")
-    parser.add_argument("--decay_schema", type=str, default='hand', help='learning rate decay: exp | hand')
-    parser.add_argument("--encoder", type=str, default='gnmt', help="gnmt | elmo")
-    parser.add_argument("--decay_steps", type=int, default=10000, help="decay steps")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate. RMS: 0.001 | 0.0001")
-    parser.add_argument("--focal_loss", type=float, default=2., help="gamma of focal loss")
-    parser.add_argument("--embedding_dropout", type=float, default=0.1, help="embedding_dropout")
-    parser.add_argument("--max_gradient_norm", type=float, default=5.0, help="Clip gradients to this norm.")
-    parser.add_argument("--dropout_keep_prob", type=float, default=0.8, help="drop out keep ratio for training")
-    parser.add_argument("--weight_keep_drop", type=float, default=0.8, help="weight keep drop")
-    parser.add_argument("--l2_loss_ratio", type=float, default=0.0, help="l2 loss ratio")
-    parser.add_argument("--rnn_cell_name", type=str, default='lstm', help='rnn cell name')
-    parser.add_argument("--embedding_size", type=int, default=300, help="embedding_size")
-    parser.add_argument("--num_units", type=int, default=300, help="num_units")
-    parser.add_argument("--double_decoder", type='bool', nargs="?", const=True, default=False,
-                        help="Whether to double decoder size")
-    parser.add_argument("--variational_dropout", type='bool', nargs="?", const=True, default=True,
-                        help="Whether to use variational_dropout")
+    # model path
+    parser.add_argument('--weight_save_path', type=str, default='model/best_weight', help='path of best weights')
 
-    # clf
-    parser.add_argument("--target_label_num", type=int, default=4, help="target_label_num")
-    parser.add_argument("--feature_num", type=int, default=20, help="feature_num")
+    # model params
+    parser.add_argument('--max_len', type=int, default=1000, help='max length of content')
+    parser.add_argument('--vocab_size', type=int, default=50000, help='size of vocabulary')
+    parser.add_argument('--embedding_dim', type=int, default=256, help='embedding size')
+    parser.add_argument('--lstm_unit', type=int, default=128, help='unit num of lstm')
+    parser.add_argument('--dropout_loss_rate', type=float, default=0.2, help='dropout loss ratio for training')
+    parser.add_argument('--label_num', type=int, default=4, help='num of label')
 
-    # predict
-    parser.add_argument("--checkpoint_dir", type=str, default='/tmp/visual-semantic',
-                        help="checkpoint dir to save model")
+    # train and valid
+    parser.add_argument('--train_log', type=str, default='model/train_log.txt', help='path of train log')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size')
+    parser.add_argument('--shuffle_size', type=int, default=128, help='the shuffle size of dataset')
+    parser.add_argument('--feature_num', type=int, default=20, help='num of feature')
+    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--ckpt_params_path', type=str, default='model/ckpt/ckpt_params.json',
+                        help='path of checkpoint params')
+
+    flags, unparsed = parser.parse_known_args()
+    return flags
 
 
-def convert_to_hparams(params):
-    hparams = tf.contrib.training.HParams()
-    for k, v in params.items():
-        hparams.add_hparam(k, v)
-    return hparams
+# 日志
+def initial_logging(logging_path='info.log'):
+    logger = logging.getLogger((__name__))
+    logger.setLevel(logging.INFO)
+    file_handler = logging.FileHandler(filename=logging_path)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    file_handler.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+    return logger
 
 
-def predict(flags, model, sentence):
-    cnt = 0
-    # process sentence
-    process_data(flags.data_file, labels, sentence)
-    # transform to dataset
-    dataset = DataSet(flags.data_file, flags.vocab_file, flags.label_file, flags.batch_size, reverse=flags.reverse,
-                      split_word=flags.split_word, max_len=flags.max_len)
-
-    for (source, lengths, _, ids) in dataset.get_next(shuffle=False):
-        predict, logits = model.inference_clf_one_batch(sess, source, lengths)
-        for i, (p, l) in enumerate(zip(predict, logits)):
-            for j in range(flags.feature_num):
-                label_name = dataset.i2l[j]
-                if flags.prob:
-                    tag = [float(v) for v in l[j]]
-                else:
-                    tag = dataset.tag_i2l[np.argmax(p[j])]
-                dataset.items[cnt + i][label_name] = tag
-        cnt += len(lengths)
-
-    return dataset.items[0]
-
-
-def tag2label(num):
+# 标签转化成文字
+def label2tag(num):
     num = int(num)
-    if num == 1:
+    if num == 3:
         return '正面情感'
-    elif num == 0:
+    elif num == 2:
         return '中性情感'
-    elif num == -1:
+    elif num == 1:
         return '负面情感'
-    elif num == -2:
+    elif num == 0:
         return '未提及'
     else:
         return '出错了'
 
-def render(html, item):
-    comment = item['sentence']
-    ltc = tag2label(item['location_traffic_convenience'])
-    ldfbd = tag2label(item['location_distance_from_business_district'])
-    letf = tag2label(item['location_easy_to_find'])
-    swt = tag2label(item['service_wait_time'])
-    swa = tag2label(item['service_waiters_attitude'])
-    spc = tag2label(item['service_parking_convenience'])
-    sss = tag2label(item['service_serving_speed'])
-    pl = tag2label(item['price_level'])
-    pce = tag2label(item['price_cost_effective'])
-    pd = tag2label(item['price_discount'])
-    ed = tag2label(item['environment_decoration'])
-    en = tag2label(item['environment_noise'])
-    es = tag2label(item['environment_space'])
-    ec = tag2label(item['environment_cleaness'])
-    dp = tag2label(item['dish_portion'])
-    dt = tag2label(item['dish_taste'])
-    dl = tag2label(item['dish_look'])
-    dr = tag2label(item['dish_recommendation'])
-    ooe = tag2label(item['others_overall_experience'])
-    owtca = tag2label(item['others_willing_to_consume_again'])
+
+# 输出html
+def render(html, comment, labels):
+    ltc = label2tag(labels[0])
+    ldfbd = label2tag(labels[1])
+    letf = label2tag(labels[2])
+    swt = label2tag(labels[3])
+    swa = label2tag(labels[4])
+    spc = label2tag(labels[5])
+    sss = label2tag(labels[6])
+    pl = label2tag(labels[7])
+    pce = label2tag(labels[8])
+    pd = label2tag(labels[9])
+    ed = label2tag(labels[10])
+    en = label2tag(labels[11])
+    es = label2tag(labels[12])
+    ec = label2tag(labels[13])
+    dp = label2tag(labels[14])
+    dt = label2tag(labels[15])
+    dl = label2tag(labels[16])
+    dr = label2tag(labels[17])
+    ooe = label2tag(labels[18])
+    owtca = label2tag(labels[19])
     return render_template(html, comment=comment, ltc=ltc, ldfbd=ldfbd, letf=letf, swt=swt, swa=swa, spc=spc, sss=sss,
                            pl=pl, pce=pce, pd=pd, ed=ed, en=en, es=es, ec=ec, dp=dp, dt=dt, dl=dl, dr=dr, ooe=ooe,
                            owtca=owtca)
 
 
-def get_test_sentence(file):
+# 获取测试数据
+def get_test_comment(file):
     s_csv = pd.read_csv(file)
     return s_csv['content'].tolist()
 
 
-def create_radarmap(item):
+# 绘制雷达图
+def create_radarmap(labels):
     values = [[]]
     inds = []
-    d = {
-        'location_traffic_convenience': '交通是否便利',
-        'location_distance_from_business_district': '距离商圈远近',
-        'location_easy_to_find': '是否容易寻找',
-        'service_wait_time': '排队等候时间',
-        'service_waiters_attitude': '服务人员态度',
-        'service_parking_convenience': '是否容易停车',
-        'service_serving_speed': '点菜/上菜速度',
-        'price_level': '价格水平',
-        'price_cost_effective': '性价比',
-        'price_discount': '折扣力度',
-        'environment_decoration': '装修情况',
-        'environment_noise': '嘈杂情况',
-        'environment_space': '就餐空间',
-        'environment_cleaness': '卫生情况',
-        'dish_portion': '分量',
-        'dish_taste': '口感',
-        'dish_look': '外观',
-        'dish_recommendation': '推荐程度',
-        'others_overall_experience': '本次消费感受',
-        'others_willing_to_consume_again': '再次消费的意愿'
-    }
-    labels = [label for label in item.keys() if label not in ['id', 'content', 'sentence']]
-    for label in labels:
-        if int(item[label]) != -2:
-            values[0].append(int(item[label]) + 1)
-            inds.append(d[label])
+    d = ['交通是否便利', '距离商圈远近', '是否容易寻找', '排队等候时间', '服务人员态度', '是否容易停车', '点菜/上菜速度', '价格水平',
+         '性价比', '折扣力度', '装修情况', '嘈杂情况', '就餐空间', '卫生情况', '分量', '口感', '外观', '推荐程度', '本次消费感受',
+         '再次消费的意愿']
+
+    for i in range(len(labels)):
+        if labels[i] > 0:
+            values[0].append(int(labels[i])-1)
+            inds.append(d[i])
 
     radar = (
         Radar()
@@ -188,63 +147,44 @@ def create_radarmap(item):
         )
             .add('分类指标', values)
     )
-    make_snapshot(snapshot, radar.render(), "../static/images/radar.png")
+    make_snapshot(snapshot, radar.render(), "static/images/radar.png")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    add_arguments(parser)
-    flags, unparsed = parser.parse_known_args()
+def main():
+    flags = initial_arguments()
+    logger = initial_logging()
 
     options = Options()
     options.add_argument('-headless')
     options.add_argument('-no-sandbox')
     options.add_argument('-disable-dev-shm-usage')
 
+    logger.info('Initialize model')
+    sa = SentimentAnalysis(flags)
 
-    with tf.Session(config=get_config_proto(log_device_placement=False)) as sess:
-        hparams = load_hparams(flags.checkpoint_dir,
-                               {"mode": 'inference', 'checkpoint_dir': flags.checkpoint_dir + "/best_eval",
-                                'embed_file': None})
-        model = Model(hparams)
-        model.build()
+    test_comment = get_test_comment(flags.test_comment_file)
 
-        try:
-            model.restore_model(sess)  # restore best solution
-        except Exception as e:
-            print("unable to restore model with exception", e)
-            exit(1)
+    app = Flask(__name__)
 
-        scalars = model.scalars.eval(session=sess)
-        print("Scalars:", scalars)
-        weight = model.weight.eval(session=sess)
-        print("Weight:", weight)
-        cnt = 0
+    @app.route('/alex/project2/', methods=['POST', 'GET'])
+    def show():
+        if request.method == 'POST':
+            # get comment
+            comment = request.form.get('comment')
+            logger.info(f'Received a comment:\n {comment}')
+            labels = sa.predict(comment)
+        else:
+            # use a random test comment
+            comment = random.choice(test_comment)
+            labels = sa.predict(comment)
 
-        with open(flags.label_file, 'r') as f:
-            labels = [label.strip() for label in f.readlines()]
+        create_radarmap(labels)
+        return render('single.html', comment, labels)
 
-        test_sentence = get_test_sentence(flags.test_sentence_file)
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(seconds=1)
 
-        app = Flask(__name__)
+    app.run(host='0.0.0.0', port=8888)
 
 
-        @app.route('/alex/project2/', methods=['POST', 'GET'])
-        def show():
-            if request.method == 'POST':
-                sentence = request.form.get('comment')
-                item = predict(flags, model, sentence)
-                item['sentence'] = sentence
-                create_radarmap(item)
-                return render('single.html', item)
-            else:
-                sentence = random.choice(test_sentence)
-                item = predict(flags, model, sentence)
-                item['sentence'] = sentence
-                create_radarmap(item)
-                return render('single.html', item)
-
-        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(seconds=1)
-
-        app.run(host='0.0.0.0', port=8888)
-        # app.run(debug=True)
+if __name__ == '__main__':
+    main()

@@ -26,6 +26,8 @@ Python3、numpy、jieba、re、gemsim.models.word2vec、sklearn.decomposition.PC
 
 ## 项目结构
 
+---
+
 - articleSummary.py: 用Flask在网页端启动项目程序
 - templates: html文件夹
 - static: css文件夹
