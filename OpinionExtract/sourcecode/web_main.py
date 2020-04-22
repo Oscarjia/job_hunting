@@ -1,6 +1,11 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 from flask import Flask, request, render_template
 import argparse
-import numpy as np
 import pandas as pd
 import random
 from extract_opinion import extractOpinion

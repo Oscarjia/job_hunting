@@ -1,3 +1,9 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 import re
 import jieba
 from pyltp import Postagger, Parser, Segmentor
