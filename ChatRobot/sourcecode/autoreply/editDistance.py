@@ -1,6 +1,13 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 from functools import lru_cache
 
 
+# 编辑距离
 def edit_distance(s1, s2):
     best_solutions = {}
 

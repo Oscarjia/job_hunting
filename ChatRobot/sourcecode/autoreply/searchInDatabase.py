@@ -1,13 +1,19 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 import numpy as np
 import pandas as pd
 from gensim.models import Word2Vec
 from sklearn.cluster import KMeans
-import re
 import jieba
 from collections import defaultdict
 from .editDistance import edit_distance
 
 
+# 从数据库里进行搜索答案
 class DatabaseAnswer:
     def __init__(self, database_path, w2v_path, stopwords_path):
         self.database_path = database_path

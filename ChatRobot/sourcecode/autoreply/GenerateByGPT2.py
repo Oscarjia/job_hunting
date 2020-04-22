@@ -1,8 +1,15 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 import torch
 from transformers.modeling_gpt2 import GPT2LMHeadModel
 from transformers import BertTokenizer
 
 
+# 根据GPT2生成回复
 class GPT2Generate:
     def __init__(self, model_path, vocab_path):
         torch.cuda.empty_cache()

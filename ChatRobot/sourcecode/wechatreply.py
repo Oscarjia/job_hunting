@@ -1,3 +1,9 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 from flask import Flask, request, make_response
 import hashlib
 import xml.etree.ElementTree as ET
@@ -9,11 +15,11 @@ import logging
 
 # arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--database_path', type=str, default='databasefiles/qa_corpus.csv', help='the path of database file')
-parser.add_argument('--w2v_path', type=str, default='databasefiles/model_200219', help='the path of word2vec model')
-parser.add_argument('--stopwords_path', type=str, default='databasefiles/哈工大停用词表扩展.txt', help='the path of stopwords file')
-parser.add_argument('--model_path', type=str, default='source/', help='the path of gpt2 model')
-parser.add_argument('--vocab_path', type=str, default='source/vocab_small.txt', help='the path of vocabulary file')
+parser.add_argument('--database_path', type=str, default='data/qa_corpus.csv', help='the path of database file')
+parser.add_argument('--w2v_path', type=str, default='model/w2v/model_200219', help='the path of word2vec model')
+parser.add_argument('--stopwords_path', type=str, default='data/哈工大停用词表扩展.txt', help='the path of stopwords file')
+parser.add_argument('--model_path', type=str, default='model/gpt2/', help='the path of gpt2 model')
+parser.add_argument('--vocab_path', type=str, default='data/vocab_small.txt', help='the path of vocabulary file')
 parser.add_argument('--logging_path', type=str, default='data/info.log', help='the path of logging file')
 parser.add_argument('--record_path', type=str, default='data/dialogue/', help='the path of dialogue file')
 flags, unparsed = parser.parse_known_args()

@@ -1,3 +1,9 @@
+# ========================================
+# Author: Jiang Xiaotian
+# Email: jxt441621944@163.com
+# Copyright: lorewalkeralex @ 2020
+# ========================================
+
 import requests
 from lxml import etree
 import re
@@ -5,6 +11,8 @@ from urllib import parse
 from .editDistance import edit_distance
 
 
+# 根据爬虫生成结果
+# bdbk=百度百科；bdzd=百度知道
 class WebSpider:
     def __init__(self):
         self.bdbk_headers = {
